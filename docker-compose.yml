@@ -1,0 +1,18 @@
+services:
+  linuxdo-kb:
+    build: .
+    container_name: linuxdo-kb
+    restart: unless-stopped
+    ports:
+      - "3010:3000"
+    environment:
+      - PORT=3000
+      # 指向你的 FlareSolverr
+      - FLARESOLVERR_URL=http://192.168.31.6:8191/v1
+      # Cookie 文件路径（挂载后容器内路径）
+      - LINUXDO_COOKIE_FILE=/secrets/linuxdo_cookies.txt
+    volumes:
+      - ./posts:/app/posts
+      - ./views:/app/views
+      - ./data:/app/data
+      - ./secrets:/secrets:ro
