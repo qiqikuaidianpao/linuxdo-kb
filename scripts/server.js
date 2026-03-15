@@ -42,53 +42,122 @@ function readMeta(id) {
 }
 
 function renderIndex() {
-  let html = `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  return `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>linuxdo-kb</title>
-  <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial; margin:24px;}
-    .muted{color:#666;font-size:12px}
-    .row{padding:10px 0;border-bottom:1px solid #eee}
-    input{padding:8px;width:380px;max-width:100%;display:block;margin:8px 0}
-    textarea{padding:8px}
-    button{padding:8px 12px;margin-top:8px}
-    a{color:#0b65c2;text-decoration:none}
-  </style>
+  <link rel="stylesheet" href="/static/app.css"/>
   </head><body>
-  <h1>linuxdo-kb 控制面板（MVP）</h1>
-  <div class="muted">首页：Topics 总览 ｜ <a href="/posts">帖子列表</a></div>
 
-  <h2>Topics（主题）</h2>
-  <div class="muted">Topic 文件位置：data/topics/*.json</div>
-  <div id="topics"></div>
-
-  <h3>创建 Topic</h3>
-  <div class="muted">字段：topicId + name + keywords + description + rules（C）</div>
-  <input id="tid" placeholder="topicId，例如 grok2api"/>
-  <input id="tname" placeholder="名称，例如 Grok2API 部署与使用"/>
-  <input id="tkw" placeholder="关键词（逗号分隔）例如 grok,grok2api,x.ai"/>
-  <input id="tdesc" placeholder="描述（可选）"/>
-  <textarea id="trules" style="width:100%;max-width:760px;height:120px;margin-top:8px" placeholder='rules JSON，例如 {"match":{"keywords":["grok","grok2api"],"minScore":2},"seedPosts":["1613202"],"autoTag":true}'></textarea>
-  <div>
-    <button onclick="createTopic()">创建/更新 Topic</button>
+  <div class="topbar">
+    <div class="inner">
+      <div class="brand">linuxdo-kb <span class="badge">MVP</span></div>
+      <div class="nav">
+        <a class="active" href="/">Topics</a>
+        <a href="/posts">Posts</a>
+      </div>
+      <div style="flex:1"></div>
+      <div class="h2">Linux.do 知识库 / 控制面板</div>
+    </div>
   </div>
-  <pre id="log" class="muted"></pre>
+
+  <div class="container">
+    <div class="grid">
+      <div class="card">
+        <div class="hd">
+          <div>
+            <div class="h1">Topics</div>
+            <div class="h2">数据源：data/topics/*.json</div>
+          </div>
+          <div class="kv"><span id="topicCount">loading...</span></div>
+        </div>
+        <div class="bd">
+          <div id="topics" class="list"></div>
+          <div class="footer">提示：点击 Topic 进入详情页；后续我们会把“关联帖子聚合/向量聚类结果”也放到这里。</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="hd">
+          <div>
+            <div class="h1">创建 / 更新 Topic</div>
+            <div class="h2">topicId + name 必填</div>
+          </div>
+        </div>
+        <div class="bd">
+          <div class="help">Topic ID</div>
+          <input class="inp" id="tid" placeholder="例如 grok2api"/>
+
+          <div class="help">名称</div>
+          <input class="inp" id="tname" placeholder="例如 Grok2API 部署与使用"/>
+
+          <div class="help">关键词（逗号分隔）</div>
+          <input class="inp" id="tkw" placeholder="例如 grok,grok2api,x.ai"/>
+
+          <div class="help">描述（可选）</div>
+          <input class="inp" id="tdesc" placeholder="一句话描述这个主题"/>
+
+          <div class="help">Rules JSON</div>
+          <div class="btnrow" style="margin:8px 0 10px">
+            <button class="btn ghost" onclick="fillTemplate()">示例模板</button>
+            <button class="btn" onclick="formatJson()">格式化 JSON</button>
+            <button class="btn" onclick="validateJson()">校验 JSON</button>
+            <button class="btn primary" onclick="createTopic()">创建/更新</button>
+          </div>
+          <textarea id="trules" placeholder='例如 {"match":{"keywords":["grok","grok2api"],"minScore":2},"seedPosts":["1613202"],"autoTag":true}'></textarea>
+          <pre id="log" class="pre" style="margin-top:12px; display:none"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script>
+    function showLog(obj){
+      const el=document.getElementById('log');
+      el.style.display='block';
+      el.textContent = typeof obj==='string' ? obj : JSON.stringify(obj,null,2);
+    }
+
     async function loadTopics(){
       const r=await fetch('/api/topics');
       const j=await r.json();
       const el=document.getElementById('topics');
-      if(!j.ok){ el.textContent='加载失败：'+(j.error||''); return; }
-      if(!j.topics.length){ el.innerHTML='<div class="muted">暂无 topic，请先创建一个。</div>'; return; }
+      const cnt=document.getElementById('topicCount');
+      if(!j.ok){ el.textContent='加载失败：'+(j.error||''); cnt.textContent='error'; return; }
+      cnt.textContent = '共 ' + j.topics.length + ' 个';
+      if(!j.topics.length){ el.innerHTML='<div class="help">暂无 topic，请先在右侧创建一个。</div>'; return; }
       el.innerHTML=j.topics.map(t=>{
         const kw=(t.keywords||[]).join(', ');
-        return '<div class="row">'
-          + '<div><a href="/topic/'+t.topicId+'">'+t.name+'</a> <span class="muted">('+t.topicId+')</span></div>'
-          + '<div class="muted">'+(t.description||'')+'</div>'
-          + '<div class="muted">关键词：'+kw+'</div>'
-          + '<div class="muted">updated: '+(t.updatedAt||'')+'</div>'
+        return '<div class="item">'
+          + '<div class="title">'
+          +   '<div class="name"><a href="/topic/'+t.topicId+'">'+t.name+'</a> <span class="h2">('+t.topicId+')</span></div>'
+          +   '<div class="h2">'+(t.updatedAt||'')+'</div>'
+          + '</div>'
+          + '<div class="meta">'+(t.description||'').replace(/</g,'&lt;')+'</div>'
+          + '<div class="meta">关键词：'+(kw.replace(/</g,'&lt;') || '-')+'</div>'
         + '</div>';
       }).join('');
+    }
+
+    function fillTemplate(){
+      const tpl={
+        match:{ keywords:["grok","grok2api","x.ai"], minScore:2 },
+        seedPosts:["1613202"],
+        autoTag:true
+      };
+      document.getElementById('trules').value = JSON.stringify(tpl,null,2);
+    }
+
+    function formatJson(){
+      const s=document.getElementById('trules').value.trim();
+      if(!s) return;
+      try{ document.getElementById('trules').value = JSON.stringify(JSON.parse(s),null,2); showLog('✅ 已格式化'); }
+      catch(e){ showLog('❌ JSON 格式错误：'+e.message); }
+    }
+
+    function validateJson(){
+      const s=document.getElementById('trules').value.trim();
+      if(!s){ showLog('（rules 为空：允许）'); return; }
+      try{ JSON.parse(s); showLog('✅ JSON 校验通过'); }
+      catch(e){ showLog('❌ JSON 校验失败：'+e.message); }
     }
 
     async function createTopic(){
@@ -97,11 +166,11 @@ function renderIndex() {
       const keywords=document.getElementById('tkw').value.trim();
       const description=document.getElementById('tdesc').value.trim();
       const rules=document.getElementById('trules').value.trim();
-      if(!topicId||!name){ document.getElementById('log').textContent='topicId 和 name 必填'; return; }
-      document.getElementById('log').textContent='提交中...';
+      if(!topicId||!name){ showLog('❌ topicId 和 name 必填'); return; }
+      showLog('提交中...');
       const r=await fetch('/api/topic/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({topicId,name,keywords,description,rules})});
       const j=await r.json();
-      document.getElementById('log').textContent=JSON.stringify(j,null,2);
+      showLog(j);
       if(j.ok) loadTopics();
     }
 
@@ -109,8 +178,8 @@ function renderIndex() {
   </script>
 
   </body></html>`;
-  return html;
 }
+
 
 function renderPost(id) {
   const p = path.join(POSTS_DIR, id, 'content.md');
@@ -118,7 +187,7 @@ function renderPost(id) {
   const md = fs.readFileSync(p, 'utf-8');
   const html = `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
     <title>${id}</title>
-    <style>body{font-family:system-ui; margin:24px;} pre{white-space:pre-wrap; word-break:break-word;}</style>
+  <link rel="stylesheet" href="/static/app.css"/>
   </head><body>
     <a href="/">← 返回 Topics</a> ｜ <a href="/posts">帖子列表</a>
     <h1>帖子 ${id}</h1>
@@ -179,7 +248,7 @@ function renderPostsList(){
 
   return `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>posts</title>
-  <style>body{font-family:system-ui;margin:24px}.row{padding:10px 0;border-bottom:1px solid #eee}.muted{color:#666;font-size:12px}a{color:#0b65c2;text-decoration:none}</style>
+  <link rel="stylesheet" href="/static/app.css"/>
   </head><body>
   <a href="/">← 返回 Topics</a>
   <h1>帖子列表（${items.length}）</h1>
@@ -201,7 +270,7 @@ function renderTopicDetail(topicId){
   const kw = (t.keywords||[]).join(', ');
   return `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>${escapeHtml(t.name||topicId)}</title>
-  <style>body{font-family:system-ui;margin:24px}.muted{color:#666;font-size:12px}pre{white-space:pre-wrap;word-break:break-word}a{color:#0b65c2;text-decoration:none}</style>
+  <link rel="stylesheet" href="/static/app.css"/>
   </head><body>
     <a href="/">← 返回 Topics</a> ｜ <a href="/posts">帖子列表</a>
     <h1>${escapeHtml(t.name||topicId)} <span class="muted">(${topicId})</span></h1>
@@ -219,6 +288,15 @@ function renderTopicDetail(topicId){
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
+
+  // static assets
+  if (req.method === 'GET' && url.pathname === '/static/app.css') {
+    const cssPath = path.join(ROOT, 'static', 'app.css');
+    if (!fs.existsSync(cssPath)) return send(res, 404, 'not found');
+    const css = fs.readFileSync(cssPath, 'utf-8');
+    res.writeHead(200, { 'content-type': 'text/css; charset=utf-8' });
+    return res.end(css);
+  }
 
   if (req.method === 'GET' && url.pathname === '/') {
     return send(res, 200, renderIndex());
