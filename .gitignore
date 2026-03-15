@@ -1,0 +1,14 @@
+# data artifacts
+*.log
+.DS_Store
+
+# local secrets
+.env
+.secrets/
+
+# node
+node_modules/
+
+# build
+.dist/
+dist/
