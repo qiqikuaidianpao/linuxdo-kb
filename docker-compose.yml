@@ -11,8 +11,14 @@ services:
       - FLARESOLVERR_URL=http://192.168.31.6:8191/v1
       # Cookie 文件路径（挂载后容器内路径）
       - LINUXDO_COOKIE_FILE=/secrets/linuxdo_cookies.txt
+      # embedding 模型（先跑通，后续可切 bge）
+      - EMBED_MODEL=BAAI/bge-small-zh-v1.5
     volumes:
       - ./posts:/app/posts
       - ./views:/app/views
       - ./data:/app/data
       - ./secrets:/secrets:ro
+      # 向量存储（外部挂载到极空间 share）
+      - /root/.openclaw/share/linuxdo-kb-vectors:/vectors
+    environment:
+      - VECTOR_DIR=/vectors
