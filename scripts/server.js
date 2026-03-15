@@ -42,48 +42,71 @@ function readMeta(id) {
 }
 
 function renderIndex() {
-  const items = listTopicIds()
-    .map(id => ({ id, meta: readMeta(id) }))
-    .sort((a, b) => ((b.meta?.fetchedAt) || '').localeCompare((a.meta?.fetchedAt) || ''));
-
   let html = `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>linuxdo-kb</title>
   <style>
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial; margin:24px;}
     .muted{color:#666;font-size:12px}
     .row{padding:10px 0;border-bottom:1px solid #eee}
-    input{padding:8px;width:380px;max-width:100%}
-    button{padding:8px 12px;margin-left:8px}
+    input{padding:8px;width:380px;max-width:100%;display:block;margin:8px 0}
+    textarea{padding:8px}
+    button{padding:8px 12px;margin-top:8px}
     a{color:#0b65c2;text-decoration:none}
   </style>
   </head><body>
   <h1>linuxdo-kb 控制面板（MVP）</h1>
-  <div class="muted">POST /api/add 可添加帖子；当前只做 raw 归档 + 浏览。</div>
-  <h2>添加帖子</h2>
-  <input id="u" placeholder="topic url 或 topicId，例如 1613202"/>
-  <button onclick="add()">添加</button>
+  <div class="muted">首页：Topics 总览 ｜ <a href="/posts">帖子列表</a></div>
+
+  <h2>Topics（主题）</h2>
+  <div class="muted">Topic 文件位置：data/topics/*.json</div>
+  <div id="topics"></div>
+
+  <h3>创建 Topic</h3>
+  <div class="muted">字段：topicId + name + keywords + description + rules（C）</div>
+  <input id="tid" placeholder="topicId，例如 grok2api"/>
+  <input id="tname" placeholder="名称，例如 Grok2API 部署与使用"/>
+  <input id="tkw" placeholder="关键词（逗号分隔）例如 grok,grok2api,x.ai"/>
+  <input id="tdesc" placeholder="描述（可选）"/>
+  <textarea id="trules" style="width:100%;max-width:760px;height:120px;margin-top:8px" placeholder='rules JSON，例如 {"match":{"keywords":["grok","grok2api"],"minScore":2},"seedPosts":["1613202"],"autoTag":true}'></textarea>
+  <div>
+    <button onclick="createTopic()">创建/更新 Topic</button>
+  </div>
   <pre id="log" class="muted"></pre>
+
   <script>
-    async function add(){
-      const urlOrId=document.getElementById('u').value.trim();
-      if(!urlOrId) return;
-      document.getElementById('log').textContent='添加中...';
-      const r=await fetch('/api/add',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({urlOrId})});
+    async function loadTopics(){
+      const r=await fetch('/api/topics');
+      const j=await r.json();
+      const el=document.getElementById('topics');
+      if(!j.ok){ el.textContent='加载失败：'+(j.error||''); return; }
+      if(!j.topics.length){ el.innerHTML='<div class="muted">暂无 topic，请先创建一个。</div>'; return; }
+      el.innerHTML=j.topics.map(t=>{
+        const kw=(t.keywords||[]).join(', ');
+        return '<div class="row">'
+          + '<div><a href="/topic/'+t.topicId+'">'+t.name+'</a> <span class="muted">('+t.topicId+')</span></div>'
+          + '<div class="muted">'+(t.description||'')+'</div>'
+          + '<div class="muted">关键词：'+kw+'</div>'
+          + '<div class="muted">updated: '+(t.updatedAt||'')+'</div>'
+        + '</div>';
+      }).join('');
+    }
+
+    async function createTopic(){
+      const topicId=document.getElementById('tid').value.trim();
+      const name=document.getElementById('tname').value.trim();
+      const keywords=document.getElementById('tkw').value.trim();
+      const description=document.getElementById('tdesc').value.trim();
+      const rules=document.getElementById('trules').value.trim();
+      if(!topicId||!name){ document.getElementById('log').textContent='topicId 和 name 必填'; return; }
+      document.getElementById('log').textContent='提交中...';
+      const r=await fetch('/api/topic/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({topicId,name,keywords,description,rules})});
       const j=await r.json();
       document.getElementById('log').textContent=JSON.stringify(j,null,2);
-      if(j.ok) location.reload();
+      if(j.ok) loadTopics();
     }
-  </script>
 
-  <h2>已归档帖子（${items.length}）</h2>
-  ${items.map(it=>{
-    const meta=it.meta||{};
-    const source=meta.source||`https://linux.do/t/topic/${it.id}`;
-    const t=meta.title?escapeHtml(meta.title):'';
-    const time=meta.fetchedAt||'';
-    return `<div class="row"><div><a href="/post/${it.id}">${it.id}</a> <span class="muted">${escapeHtml(time)}</span></div>
-      <div class="muted"><a href="${escapeHtml(source)}" target="_blank">source</a></div></div>`;
-  }).join('')}
+    loadTopics();
+  </script>
 
   </body></html>`;
   return html;
@@ -97,7 +120,7 @@ function renderPost(id) {
     <title>${id}</title>
     <style>body{font-family:system-ui; margin:24px;} pre{white-space:pre-wrap; word-break:break-word;}</style>
   </head><body>
-    <a href="/">← 返回</a>
+    <a href="/">← 返回 Topics</a> ｜ <a href="/posts">帖子列表</a>
     <h1>帖子 ${id}</h1>
     <pre>${escapeHtml(md)}</pre>
   </body></html>`;
@@ -126,6 +149,74 @@ function runAdd(urlOrId) {
   });
 }
 
+function topicsDir(){
+  return path.join(ROOT, 'data', 'topics');
+}
+
+function listTopics(){
+  const dir = topicsDir();
+  if(!fs.existsSync(dir)) return [];
+  const files = fs.readdirSync(dir).filter(f=>f.endsWith('.json'));
+  const topics = files.map(f=>{
+    const j = JSON.parse(fs.readFileSync(path.join(dir,f),'utf-8'));
+    return {
+      topicId: j.topicId,
+      name: j.name,
+      description: j.description || '',
+      keywords: j.keywords || [],
+      updatedAt: j.updatedAt,
+      rules: j.rules || {}
+    };
+  });
+  topics.sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
+  return topics;
+}
+
+function renderPostsList(){
+  const items = listTopicIds()
+    .map(id => ({ id, meta: readMeta(id) }))
+    .sort((a, b) => ((b.meta?.fetchedAt) || '').localeCompare((a.meta?.fetchedAt) || ''));
+
+  return `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>posts</title>
+  <style>body{font-family:system-ui;margin:24px}.row{padding:10px 0;border-bottom:1px solid #eee}.muted{color:#666;font-size:12px}a{color:#0b65c2;text-decoration:none}</style>
+  </head><body>
+  <a href="/">← 返回 Topics</a>
+  <h1>帖子列表（${items.length}）</h1>
+  ${items.map(it=>{
+    const meta=it.meta||{};
+    const source=meta.source||`https://linux.do/t/topic/${it.id}`;
+    const time=meta.fetchedAt||'';
+    return `<div class="row"><div><a href="/post/${it.id}">${it.id}</a> <span class="muted">${escapeHtml(time)}</span></div>
+      <div class="muted"><a href="${escapeHtml(source)}" target="_blank">source</a></div></div>`;
+  }).join('')}
+  </body></html>`;
+}
+
+function renderTopicDetail(topicId){
+  const p = path.join(topicsDir(), `${topicId}.json`);
+  if(!fs.existsSync(p)) return null;
+  const t = JSON.parse(fs.readFileSync(p,'utf-8'));
+  const rules = JSON.stringify(t.rules || {}, null, 2);
+  const kw = (t.keywords||[]).join(', ');
+  return `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>${escapeHtml(t.name||topicId)}</title>
+  <style>body{font-family:system-ui;margin:24px}.muted{color:#666;font-size:12px}pre{white-space:pre-wrap;word-break:break-word}a{color:#0b65c2;text-decoration:none}</style>
+  </head><body>
+    <a href="/">← 返回 Topics</a> ｜ <a href="/posts">帖子列表</a>
+    <h1>${escapeHtml(t.name||topicId)} <span class="muted">(${topicId})</span></h1>
+    <div class="muted">${escapeHtml(t.description||'')}</div>
+    <div class="muted">关键词：${escapeHtml(kw)}</div>
+    <h2>Rules</h2>
+    <pre>${escapeHtml(rules)}</pre>
+    <h2>Seed Posts</h2>
+    <div class="muted">（下一步会做：根据 rules/seedPosts 自动把相关帖子聚合到该主题）</div>
+    <ul>
+      ${(t.rules?.seedPosts||[]).map(id=>`<li><a href="/post/${id}">${id}</a></li>`).join('') || '<li class="muted">暂无</li>'}
+    </ul>
+  </body></html>`;
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
@@ -133,11 +224,54 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, renderIndex());
   }
 
+  if (req.method === 'GET' && url.pathname === '/posts') {
+    return send(res, 200, renderPostsList());
+  }
+
+  if (req.method === 'GET' && url.pathname.startsWith('/topic/')) {
+    const tid = url.pathname.split('/')[2];
+    const html = renderTopicDetail(tid);
+    if(!html) return send(res, 404, 'not found');
+    return send(res, 200, html);
+  }
+
   if (req.method === 'GET' && url.pathname.startsWith('/post/')) {
     const id = url.pathname.split('/')[2];
     const html = renderPost(id);
     if (!html) return send(res, 404, 'not found');
     return send(res, 200, html);
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/topics') {
+    try {
+      return sendJson(res, 200, { ok:true, topics: listTopics() });
+    } catch(e) {
+      return sendJson(res, 200, { ok:false, error: e.message });
+    }
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/topic/create') {
+    const body = await readBody(req);
+    let j;
+    try { j = JSON.parse(body || '{}'); } catch { return sendJson(res, 400, { ok:false, error:'bad json' }); }
+
+    const topicId = (j.topicId||'').trim();
+    const name = (j.name||'').trim();
+    const keywords = (j.keywords||'').trim();
+    const description = (j.description||'').trim();
+    const rules = (j.rules||'').trim();
+    if(!topicId || !name) return sendJson(res, 400, { ok:false, error:'topicId and name required' });
+
+    const args = ['scripts/topic-create.js', topicId, name, keywords, description];
+    if(rules) args.push(rules);
+    const p = spawn('node', args, { cwd: ROOT });
+    let out=''; let err='';
+    p.stdout.on('data', d => out += d.toString());
+    p.stderr.on('data', d => err += d.toString());
+    p.on('close', code => {
+      sendJson(res, 200, { ok: code===0, code, out, err });
+    });
+    return;
   }
 
   if (req.method === 'POST' && url.pathname === '/api/add') {

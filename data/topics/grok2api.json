@@ -1,0 +1,27 @@
+{
+  "topicId": "grok2api",
+  "name": "Grok2API 部署与使用",
+  "description": "Grok 账号注册、Token 管理、API 部署",
+  "keywords": [
+    "grok",
+    "grok2api",
+    "x.ai",
+    "token"
+  ],
+  "rules": {
+    "match": {
+      "keywords": [
+        "grok",
+        "grok2api",
+        "x.ai"
+      ],
+      "minScore": 2
+    },
+    "seedPosts": [
+      "1613202"
+    ],
+    "autoTag": true
+  },
+  "createdAt": "2026-03-15T04:51:03.816Z",
+  "updatedAt": "2026-03-15T04:51:03.817Z"
+}
